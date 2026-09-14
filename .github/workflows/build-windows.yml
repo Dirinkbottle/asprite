@@ -17,13 +17,14 @@ permissions:
   contents: write
 
 env:
-  ASEPRITE_REF: ${{ inputs.aseprite_ref || 'main' }}
   RELEASE_TAG: aseprite-ci-${{ github.run_number }}
 
 jobs:
   build-linux:
     name: Build and release Linux
     runs-on: ubuntu-22.04
+    env:
+      ASEPRITE_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aseprite_ref || 'main' }}
 
     steps:
       - name: Install Linux build dependencies
@@ -109,6 +110,8 @@ Windows x64 will be attached to this same release after its build completes."
     name: Build and release Windows
     needs: build-linux
     runs-on: windows-2022
+    env:
+      ASEPRITE_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aseprite_ref || 'main' }}
 
     steps:
       - name: Clone Aseprite
