@@ -85,6 +85,7 @@ jobs:
         run: |
           TAG="aseprite-ci-$GITHUB_RUN_NUMBER"
           gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
             "$GITHUB_WORKSPACE/aseprite-linux-x64.zip" \
             --target "$GITHUB_SHA" \
             --title "Aseprite CI build $GITHUB_RUN_NUMBER" \
@@ -167,4 +168,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "aseprite-ci-$env:GITHUB_RUN_NUMBER"
-          gh release upload $tag "$env:GITHUB_WORKSPACE\aseprite-windows-x64.zip" --clobber
+          gh release upload $tag "$env:GITHUB_WORKSPACE\aseprite-windows-x64.zip" --clobber --repo "$env:GITHUB_REPOSITORY"
