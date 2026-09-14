@@ -1,12 +1,6 @@
 name: Build Aseprite Linux then Windows
 
 on:
-  workflow_dispatch:
-    inputs:
-      aseprite_ref:
-        description: "Aseprite branch, tag, or commit"
-        required: false
-        default: "main"
   push:
     branches:
       - main
@@ -24,7 +18,7 @@ jobs:
     name: Build and release Linux
     runs-on: ubuntu-22.04
     env:
-      ASEPRITE_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aseprite_ref || 'main' }}
+      ASEPRITE_REF: main
 
     steps:
       - name: Install Linux build dependencies
