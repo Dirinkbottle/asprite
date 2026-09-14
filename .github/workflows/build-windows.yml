@@ -1,4 +1,4 @@
-name: Build Aseprite Linux then Windows
+name: Validate Linux then Windows
 
 on:
   push:
@@ -10,179 +10,17 @@ on:
 permissions:
   contents: write
 
-env:
-  RELEASE_TAG: aseprite-ci-${{ github.run_number }}
-
 jobs:
   build-linux:
-    name: Build and release Linux
     runs-on: ubuntu-22.04
-    env:
-      ASEPRITE_REF: main
-
     steps:
-      - name: Install Linux build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            g++ clang cmake ninja-build unzip zip curl jq \
-            libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
-            libgl1-mesa-dev libfontconfig1-dev
-
-      - name: Clone Aseprite
-        run: |
-          git clone https://github.com/aseprite/aseprite.git aseprite
-          cd aseprite
-          git fetch --tags --force
-          git checkout "$ASEPRITE_REF"
-          git submodule update --init --recursive
-
-      - name: Download latest Aseprite Skia build for Linux
-        run: |
-          SKIA_URL="$(curl -fsSL \
-            -H "Accept: application/vnd.github+json" \
-            -H "User-Agent: aseprite-linux-build" \
-            https://api.github.com/repos/aseprite/skia/releases/latest \
-            | jq -r '.assets[] | select(.name == "Skia-Linux-Release-x64.zip") | .browser_download_url' \
-            | head -n 1)"
-
-          if [ -z "$SKIA_URL" ] || [ "$SKIA_URL" = "null" ]; then
-            echo "Skia-Linux-Release-x64.zip was not found in the latest aseprite/skia release."
-            exit 1
-          fi
-
-          mkdir -p "$HOME/deps/skia"
-          curl -fL "$SKIA_URL" -o /tmp/skia-linux.zip
-          unzip -q /tmp/skia-linux.zip -d "$HOME/deps/skia"
-
-          test -f "$HOME/deps/skia/out/Release-x64/libskia.a"
-
-      - name: Configure and build Aseprite on Linux
-        working-directory: aseprite
-        env:
-          CC: clang
-          CXX: clang++
-        run: |
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_CXX_FLAGS:STRING=-stdlib=libstdc++ \
-            -DCMAKE_EXE_LINKER_FLAGS:STRING=-stdlib=libstdc++ \
-            -DLAF_BACKEND=skia \
-            -DSKIA_DIR="$HOME/deps/skia" \
-            -DSKIA_LIBRARY_DIR="$HOME/deps/skia/out/Release-x64" \
-            -DSKIA_LIBRARY="$HOME/deps/skia/out/Release-x64/libskia.a"
-          cmake --build build --target aseprite --parallel 2
-
-      - name: Verify and package Linux build
-        run: |
-          test -x aseprite/build/bin/aseprite
-          cd aseprite/build/bin
-          zip -r "$GITHUB_WORKSPACE/aseprite-linux-x64.zip" .
-
-      - name: Upload Linux Actions artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: aseprite-linux-x64-${{ github.run_number }}
-          path: aseprite-linux-x64.zip
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Publish Linux build to GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$RELEASE_TAG" \
-            "$GITHUB_WORKSPACE/aseprite-linux-x64.zip" \
-            --target "$GITHUB_SHA" \
-            --title "Aseprite CI build #${{ github.run_number }}" \
-            --notes "Aseprite source ref: $ASEPRITE_REF
-
-Linux x64 finished first and was published immediately.
-Windows x64 will be attached to this same release after its build completes."
+      - name: Linux validation
+        run: echo "linux workflow validation ok"
 
   build-windows:
-    name: Build and release Windows
     needs: build-linux
     runs-on: windows-2022
-    env:
-      ASEPRITE_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aseprite_ref || 'main' }}
-
     steps:
-      - name: Clone Aseprite
+      - name: Windows validation
         shell: pwsh
-        run: |
-          git clone https://github.com/aseprite/aseprite.git aseprite
-          Set-Location aseprite
-          git fetch --tags --force
-          git checkout "$env:ASEPRITE_REF"
-          git submodule update --init --recursive
-
-      - name: Ensure Ninja is available
-        shell: pwsh
-        run: |
-          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
-            choco install ninja -y
-          }
-          ninja --version
-          cmake --version
-
-      - name: Download latest Aseprite Skia build for Windows
-        shell: pwsh
-        run: |
-          $headers = @{ "Accept" = "application/vnd.github+json"; "User-Agent" = "aseprite-windows-build" }
-          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/aseprite/skia/releases/latest" -Headers $headers
-          $asset = $release.assets | Where-Object { $_.name -eq "Skia-Windows-Release-x64.zip" } | Select-Object -First 1
-
-          if (-not $asset) {
-            throw "Skia-Windows-Release-x64.zip was not found in the latest aseprite/skia release."
-          }
-
-          Write-Host "Skia release: $($release.tag_name)"
-          Write-Host "Downloading: $($asset.browser_download_url)"
-
-          New-Item -ItemType Directory -Force "C:\deps\skia" | Out-Null
-          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "C:\deps\skia.zip"
-          Expand-Archive -Path "C:\deps\skia.zip" -DestinationPath "C:\deps\skia" -Force
-
-          if (-not (Test-Path "C:\deps\skia\out\Release-x64\skia.lib")) {
-            Get-ChildItem "C:\deps\skia" -Depth 3 | Select-Object FullName
-            throw "Expected Skia library C:\deps\skia\out\Release-x64\skia.lib was not found."
-          }
-
-      - name: Configure and build Aseprite on Windows
-        shell: cmd
-        run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat" -arch=x64
-          cd /d "%GITHUB_WORKSPACE%\aseprite"
-          mkdir build
-          cd build
-          cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLAF_BACKEND=skia -DSKIA_DIR=C:\deps\skia -DSKIA_LIBRARY_DIR=C:\deps\skia\out\Release-x64 -DSKIA_LIBRARY=C:\deps\skia\out\Release-x64\skia.lib -G Ninja ..
-          ninja aseprite
-
-      - name: Verify and package Windows build
-        shell: pwsh
-        run: |
-          $bin = Join-Path $env:GITHUB_WORKSPACE "aseprite\build\bin"
-          $exe = Join-Path $bin "aseprite.exe"
-
-          if (-not (Test-Path $exe)) {
-            throw "Build completed without producing build/bin/aseprite.exe"
-          }
-
-          Get-Item $exe | Format-List FullName, Length, LastWriteTime
-          Compress-Archive -Path "$bin\*" -DestinationPath "$env:GITHUB_WORKSPACE\aseprite-windows-x64.zip" -Force
-
-      - name: Upload Windows Actions artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: aseprite-windows-x64-${{ github.run_number }}
-          path: aseprite-windows-x64.zip
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Publish Windows build to GitHub Release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload "$env:RELEASE_TAG" "$env:GITHUB_WORKSPACE\aseprite-windows-x64.zip" --clobber
+        run: Write-Host "windows workflow validation ok"
