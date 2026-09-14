@@ -5,7 +5,7 @@ on:
     inputs:
       aseprite_ref:
         description: "Aseprite branch, tag, or commit"
-        required: true
+        required: false
         default: "main"
   push:
     branches:
